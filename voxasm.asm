@@ -34,6 +34,7 @@ screenstart=&2c ; 2 bytes
 drawloopvalue=&2e
 maskedcolour=&2f
 plotposition=&30    ; 2 Bytes
+scalefactor=&32
 
 temp=&40            ; 4 bytes
 
@@ -189,6 +190,25 @@ NEXT
     adc #&2e    ; Location of landscape data
     sta oy+1
 
+    ldy #0
+; Shift scale down to allow 8x8 multiply
+    ldx zpointer
+    lda scalelo,x
+    sta scale
+    lda scalehi,X
+
+    beq noshiftdown
+.shiftdownlp
+    lsr a
+    ror scale
+    iny
+    cmp #0
+    bne shiftdownlp
+.noshiftdown
+    sta scale+1
+    sty scalefactor
+    
+
     ;FOR I%=1 TO SW%
     ldx #0
 .columnloop
@@ -222,25 +242,6 @@ datasource=P%+1
 ;    sta multiplier+1
  ; *scale
 
-    ldy #0
-
-; Shift scale down to allow 8x8 multiply
-    ldx zpointer
-    lda scalelo,x
-    sta scale
-    lda scalehi,X
-
-    beq noshiftdown
-.shiftdownlp
-    lsr a
-    ror scale
-    iny
-    cmp #0
-    bne shiftdownlp
-.noshiftdown
-    sta scale+1
-    sty temp+1
-
 ; Do multiply
     ldx scale
     lda multiplier
@@ -265,7 +266,7 @@ datasource=P%+1
     sbc sqrHigh,y
 
     ldx temp                    ; Restore X
-    ldy temp+1
+    ldy scalefactor
     beq noshiftup
 
     ; Shift result back up
@@ -290,11 +291,8 @@ datasource=P%+1
     bcc drawcarryon     ; Always taken
 
 .clearstack
-    pla
     lda #255                          ; Set to max
-    sta &501,X
-    sta &581,x
-    jmp nodraw
+    bne noshiftup 
 
 ; DIV 256 means just using multiplier+1 = length
 .adddiff
@@ -338,6 +336,9 @@ datasource=P%+1
     ; We have now calculated all our heights
     ; Step through and draw them all
     ldx #screenwidth-1
+
+    
+
 .drawrowlp
     ; Multiply X to horizontal position
     stx iscaled
@@ -407,15 +408,18 @@ datasource=P%+1
 
     adc screenstart            ; Screen Start
     sta plotposition+1
+    sta iscaled+1
     lda iscaled
     sta plotposition
 
     lda yb,X
+    beq skipsky1
     sta multiplier
     dec multiplier
 
     jsr drawliner
 
+.skipsky1
     cpx #0
     bne notlastcol
     stx colour              ; Draw leftmost column whole size as zero
@@ -429,11 +433,14 @@ datasource=P%+1
     sta multiplier+1
 
     lda yb2,X
+    beq skipsky2
+
     sta multiplier
     dec multiplier
 
     jsr drawlinel
 
+.skipsky2
     dex
     bpl skyloop
 
