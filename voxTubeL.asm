@@ -4,7 +4,7 @@
 ; Tube Low Res Version 
 
 codestart=&800     ; Code load address
-maxpos=&16        ; Position of landscape data
+maxpos=&17        ; Position of landscape data
 
 oswrch=&ffee
 osbyte=&fff4
@@ -34,7 +34,7 @@ key1=&58
 key2=&59
 
 lastvalue=&60
-lastheight=&61
+lastmultiplier=&61
 drawvalue=&62
 drawheight=&63
 
@@ -55,7 +55,6 @@ colour=&81
 topposition=&82
 plotposition2=&83
 tubestatus=&87
-
 
 temp=&88            ; 3 bytes
 tmpa=&8c
@@ -79,10 +78,38 @@ NEXT
 ;Lookup data
 include "voxlookup8.asm"
 
-.yb             ; Buffer for max hight drawn
-skip &40
-.yb2            ; Buffer for max average height
-skip &40
+; Colour table for quick access
+.colourtable
+; Right hand pixels
+FOR i, 0, 127
+IF i=0
+equb %00110000  ; Blue
+elif i<5
+equb %00001111  ; Yellow
+elif i<19
+equb %00001100  ; Green
+elif i<&37
+equb %00000011  ;Red
+elif i<&57
+equb %00110011 ; Magenta
+else
+equb %00111111 ; White
+ENDIF
+NEXT    
+
+
+.yb
+skip &20             ; Buffer for max hight drawn
+.lb
+skip &20             ; Buffer for last drawn
+.cb
+skip &20             ; Buffer for colour
+.yb2
+skip &20             ; Buffer for max hight drawn
+.lb2
+skip &20             ; Buffer for last drawn
+.cb2
+skip &20             ; Buffer for colour
 
 .entrypoint
     ldx #1
@@ -196,7 +223,7 @@ skip &40
     sta player_y+1
     lda #4:sta startplot
 
-    lda #224:sta height
+    lda #223:sta height
     lda #32:sta horizon
     lda #48:sta drawdistance            ;160 mark
 
@@ -224,15 +251,17 @@ skip &40
 ;    sta renderstatus            ; Set render flag to intercept oswrch
 
 ;  Reset heigh buffer
-    ldx #screenwidth/2
-    lda #screenheight          ; 200 in lowest line (25*8)
-.ybresetlp
-    sta yb-1,x
-    sta yb-1+screenwidth/2,x
-    sta yb2-1,x
-    sta yb2-1+screenwidth/2,x
+    ldx #screenwidth-1
+    lda #screenheight            ; 200 in lowest line (25*8)
+.resetlp
+    sta yb,x
+    sta lb,x
+    sta yb2,x
+    sta lb2,x
+    stz cb,x                    ; No colour
+    stz cb2,x                    ; No colour
     dex
-    bne ybresetlp
+    bpl resetlp
 
     ldx startplot ; Starting location for scale. Stting this too high means
            ; some of the very closest rows might not be drawn
@@ -292,7 +321,7 @@ skip &40
     lda temp+1
     clc
     adc #maxpos    ; Location of landscape data
-    sta oy+1
+    sta datasource+1
 
     ldy #0
 
@@ -314,31 +343,24 @@ skip &40
     sty scalestore
 
     ldx #0
-    stx lastvalue
-    stx iscaled
-
-    lda #screenheight
-    sta lastheight
+    lda #8
+    sta iscaled
 
     lda screenstart            ; Screen start
     sta iscaled+1       ; iscaled = i*8 (x*8) + screenstart
 
 
+
 .columnloop
     ;      B%=(INT(left_x%DIV256)MODsize%)+oy%
     lda left_x+1
-    and #63
-    clc
-    adc oy
+    and #127
+    ora oy
     sta datasource
-    ldy oy+1
-    adc #0
-    sty datasource+1
 datasource=P%+1
     lda datasource
     ;      V%=?B%
     sta value
-    sta drawvalue
 
     phx
     ;      L% = ((H%-V%) * scale%)DIV256 + Z%
@@ -353,9 +375,8 @@ datasource=P%+1
 
 .notneg
     sta multiplier
-;    lda #0
-;    sta multiplier+1
  ; *scale
+
 
 ; Do multiply
     ldx scale
@@ -406,11 +427,10 @@ datasource=P%+1
 
 .clearstack
     lda #255                          ; Set to max
-    bne noshiftup 
+    bne noshiftup                   ; Always taken 
 
 ; DIV 256 means just using multiplier+1 = length
 .adddiff
-    plx
     ; Add Add to horizon
     clc
     lda horizon
@@ -419,97 +439,142 @@ datasource=P%+1
     lda #255                          ; Set to max
 
 .drawcarryon
-    sta multiplier+1
-
-    cpx #0
-    beq drawskip1                   ; Skip first column
-    lda multiplier+1
-    clc
-    adc lastheight
-    ror a
-    
-    cmp yb2,x 
-    bcs drawskip1
-    sta drawheight
-
-    clc
-    lda value
-    adc lastvalue
-    ror a
-    sta drawvalue
-    ;PROCdraw_vline(I%, L%, yb%?I%)
-    jsr docolour
-
-        ; Calculate vertical position
-    lda drawheight    ; Value
-    and #%11111000              ; Remove bottom bits
-    lsr a:lsr a;:lsr a         ; Convert to 512*lines
-    ;clc                    ; Not necessary because bottom bits cleared
-    adc iscaled+1
-    ;sta plotposition+1       ; Iscaled is now top of line
-    jsr oswrch                  ; Plot position+1
-    lda drawheight
-    and #%111
-    ora iscaled
-    ;sta plotposition
-    jsr oswrch                  ; Plot position
-
-    lda yb2,x
-    sec
-    sbc drawheight            ; Total line length
-    tay
-    lda drawheight
-    sta yb2,x
-    dey
-    tya
-    jsr oswrch                  ; Line length and return
-
-.drawskip1
-
-    lda multiplier+1
-    sta lastheight
+    plx
     cmp yb,x 
+    sta multiplier+1
     bcs nodraw
-    sta drawheight
 
-    lda value
-    sta lastvalue
-    sta drawvalue
-    jsr docolour
+;    sta drawheight
+    lda cb,x
+    bne notfirstcolour                ; Not first colour
+    ldy value
+    lda colourtable,y
+    sta cb,X
+    bne nodrawthistime              ; Always taken 
 
+.notfirstcolour
+    ldy value
+    lda colourtable,y
+    cmp cb,X
+    beq nodrawthistime ; Colour is same as previous line - don't doraw yet
+
+.linetodraw
+    tay
+    lda cb,X    ; Get prebious colour
+    jsr oswrch  ; Set colour  
+    tya
+    sta cb,x    ; Store new colour
+
+    ; Have a line to draw
         ; Calculate vertical position
-    lda multiplier+1    ; Value
+    lda yb,x
     and #%11111000              ; Remove bottom bits
-    lsr a:lsr a;:lsr a         ; Convert to 512*lines
+    lsr a:lsr a         ; Convert to 512*lines
     ;clc                    ; Not necessary because bottom bits cleared
     adc iscaled+1
-    sta plotposition+1       ; Iscaled is now top of line
     jsr oswrch                  ; Plot position+1
-    lda drawheight
-    and #%111
+    lda yb,x
+    and #%111                   ; Bottom bits
     ora iscaled
-    clc
-    adc #8
-    ;sta plotposition
     jsr oswrch                  ; Plot position
+
+    lda lb,x
+    sec
+    sbc yb,x
+    jsr oswrch                  ; Line length
 
     lda yb,x
-    sec
-    sbc multiplier+1            ; Total line length
-    tay
+    sta lb,x                    ; Store new start position
+    
+.nodrawthistime
     lda multiplier+1
-    sta yb,x
-    dey
-    tya
-    jsr oswrch                  ; Line length and return
+    sta yb,X        ; Store new max height
 
 ;      IF L% < yb%?I% THEN PROCdraw_vline(I%, L%, yb%?I%):yb%?I%=L%
 .nodraw
+    lda iscaled
+    sec
+    sbc #8
+    sta iscaled
+    lda iscaled+1
+    sbc #0
+    sta iscaled+1
+    ; Do odd column
+    lda value           ; Load currnt value and store
+    tay                
+    clc
+    adc lastvalue           ; Add to previous value
+    sty lastvalue       ; Store current to last
+    ror A               ; Average
+    sta value           ; Store to new value
+
+    lda multiplier+1    ; Current top position
+    tay
+    clc
+    adc lastmultiplier  ; LAst top position
+    sty lastmultiplier  ; Store current to last
+    ror a
+    sta multiplier+1
+
+    cpx #0
+    beq nodraw2
+
+    cmp yb2,x 
+    bcs nodraw2
+
+;    sta drawheight
+    lda cb2,x
+    bne notfirstcolour2                ; Not first colour
+    ldy value
+    lda colourtable,y
+    sta cb2,X
+    bne nodrawthistime2              ; Always taken 
+
+.notfirstcolour2
+    ldy value
+    lda colourtable,y
+    cmp cb2,X
+    beq nodrawthistime2 ; Colour is same as previous line - don't doraw yet
+
+.linetodraw2
+    tay
+    lda cb2,X    ; Get prebious colour
+    jsr oswrch  ; Set colour  
+    tya
+    sta cb2,x    ; Store new colour
+
+    ; Have a line to draw
+        ; Calculate vertical position
+    lda yb2,x
+    and #%11111000              ; Remove bottom bits
+    lsr a:lsr a         ; Convert to 512*lines
+    ;clc                    ; Not necessary because bottom bits cleared
+    adc iscaled+1
+    jsr oswrch                  ; Plot position+1
+    lda yb2,x
+    and #%111                   ; Bottom bits
+    ora iscaled
+    jsr oswrch                  ; Plot position
+
+    lda lb2,x
+    sec
+    sbc yb2,x
+    jsr oswrch                  ; Line length
+
+    lda yb2,x
+    sta lb2,x                    ; Store new start position
+    
+.nodrawthistime2
+    lda multiplier+1
+    sta yb2,X        ; Store new max height
+
+;      IF L% < yb%?I% THEN PROCdraw_vline(I%, L%, yb%?I%):yb%?I%=L%
+.nodraw2
 
 ;      left_x%=left_x%+ dx%
     lda iscaled
     clc
-    adc #16
+    adc #24
     sta iscaled
     lda iscaled+1
     adc #0
@@ -538,10 +603,10 @@ datasource=P%+1
     jmp rowloop
 
 .doneframe
-;Draw sky
+
 .drawsky
     ; now do final cyan sky
-    ldx #31
+    ldx #screenwidth-1
 
     lda #lo(512-8)
     sta iscaled
@@ -551,20 +616,38 @@ datasource=P%+1
     sta iscaled+1
 
 .skyloop
+    ; Draw final line
+    lda cb,X    ; Get prebious colour
+    jsr oswrch  ; Set colour  
+    lda yb,x
+    and #%11111000              ; Remove bottom bits
+    lsr a:lsr a;:lsr a         ; Convert to 512*lines
+    ;clc                    ; Not necessary because bottom bits cleared
+    adc iscaled+1
+    jsr oswrch                  ; Plot position+1
+    lda yb,x
+    and #%111                   ; Bottom bits
+    ora iscaled
+    jsr oswrch                  ; Plot position
+
+    lda lb,x
+    sec
+    sbc yb,x
+    jsr oswrch                  ; Line length
+
+.skynofinaldraw
     lda yb,X
     beq skipsky1
 
 ; Start pos =0
-    lda #%00111100          ; Cyan
+    lda #%00111100
     jsr oswrch              ; Colour
     lda iscaled+1
     jsr oswrch              ; plotpos+1
     lda iscaled
     jsr oswrch              ; plotpos
 
-    ldy yb,X
-    dey
-    tya
+    lda yb,X
     jsr oswrch              ; Linelength
 
 .skipsky1
@@ -576,23 +659,41 @@ datasource=P%+1
     sbc #0
     sta iscaled+1
 
+    cpx #0
+    beq skipsky2
+
+;Do odd lines
+    lda cb2,X    ; Get prebious colour
+    jsr oswrch  ; Set colour  
+    lda yb2,x
+    and #%11111000              ; Remove bottom bits
+    lsr a:lsr a;:lsr a         ; Convert to 512*lines
+    ;clc                    ; Not necessary because bottom bits cleared
+    adc iscaled+1
+    jsr oswrch                  ; Plot position+1
+    lda yb2,x
+    and #%111                   ; Bottom bits
+    ora iscaled
+    jsr oswrch                  ; Plot position
+
+    lda lb2,x
+    sec
+    sbc yb2,x
+    jsr oswrch                  ; Line length
+
+.skynofinaldraw2
     lda yb2,X
     beq skipsky2
 
+; Start pos =0
     lda #%00111100
-    cpx #0
-    bne notlastcol
-    txa
-.notlastcol
     jsr oswrch              ; Colour
     lda iscaled+1
     jsr oswrch              ; plotpos+1
     lda iscaled
     jsr oswrch              ; plotpos
 
-    ldy yb2,X
-    dey
-    tya
+    lda yb2,X
     jsr oswrch              ; Linelength
 
 .skipsky2
@@ -605,15 +706,16 @@ datasource=P%+1
     sta iscaled+1
 
     dex
-    bpl skyloop
+    bmi waitforio
+    jmp skyloop
 
-.waitfortube
+.waitforio
     dex
-    bne waitfortube         ; Give IO processor some breathing space
+    bne waitforio         ; Give IO processor some breathing space
     ldx #lo(tubestatus)
     ldy #hi(tubestatus)
     jsr getmem
-    bmi waitfortube
+    bmi waitforio
 
     lda #64
     ldx #lo(renderstatus)
@@ -689,7 +791,7 @@ datasource=P%+1
     jsr keycheck
     bne notj
     ldx horizon
-    inx:inx
+    inx:inx:inx
     bmi notj
     stx horizon
 .notj
@@ -697,7 +799,7 @@ datasource=P%+1
     jsr keycheck
     bne notn
     ldx horizon
-    dex:dex
+    dex:dex:dex
     bmi notn
     stx horizon
 .notn
@@ -708,7 +810,7 @@ datasource=P%+1
     bne notk
     lda height
     clc
-    adc #6
+    adc #8
     cmp #8
     bcc notk
     sta height
@@ -718,7 +820,7 @@ datasource=P%+1
     bne notm
     lda height
     sec
-    sbc #6
+    sbc #8
     cmp #8
     bcc notm
     sta height
@@ -972,10 +1074,11 @@ equb 22,7,13,10,"Which Landscape (A-M)?",0
 .loadingtext
 equb 13,10,10,"Loading...",0
 
+
 .instructions
 equs 22,7,10,"Voxel Landscape Demo",13,10
 equs      "====================",13,10
-equs "Mode 2 Tube Version",13,10,13,10
+equs "Mode 2 Tube Low Resoution",13,10,13,10
 equs "WASD : Move Horizontally",13,10
 equs "K/M : Move Up/Down",13,10
 equs "J/N : Pitch Up/Down",13,10
@@ -1034,10 +1137,14 @@ guard iocodestart+512
     beq drawline              ; All parameters loaded
     rts
 
-;    jsr drawliner
-; Runs into drawline
 .drawline
-    ; Draw vertical line
+    ; Takes Multiplier as line length
+    ; Multiplier+1 as start location
+    ; colour as colour 
+    ; iscaled as start location
+;    lda topposition
+;    and #7              ; Invert 
+
     lda plotposition
     and #7
     sta topposition                 ; save start offset
@@ -1057,10 +1164,8 @@ guard iocodestart+512
     bcs dlmorethantop
     ; Not more than top
 
-    lda linelength
-    eor #7              ; Invert 
-    tay
-    lda branchtable,y
+    ldy linelength
+    lda branchtabler,y
     sta topbranch+1     ; Store as branch
     ldy topposition
 
@@ -1075,9 +1180,8 @@ guard iocodestart+512
     sta (plotposition),Y:iny
     sta (plotposition),Y:iny
     sta (plotposition),Y:iny
-    sta (plotposition),Y:iny
     sta (plotposition),Y
-    jmp dlfinished
+    jmp dlfinished                 ; Finish as it's only single byte
 
 .dlmorethantop
     ; Write a "complete" top byte
@@ -1100,14 +1204,13 @@ guard iocodestart+512
     sta (plotposition),Y:iny
     sta (plotposition),Y
 
-
-    lda topposition
-;    and #7
-    eor #&f8        ; 07 eor ff
+    ldy topposition
+    lda linelength  
     sec
-    adc linelength  ; Reverse Subtract
+    sbc revtable,y
     sta linelength      ; Reduce by number we just plotted.
-    beq dlfinished      ; If zero then done
+    bne dlcarryon
+    jmp dlfinished                 ; If zero then finished
 
 .dlcarryon
     cmp #8              ; Do we have whole block to finish?
@@ -1115,16 +1218,15 @@ guard iocodestart+512
 
     lda plotposition
     ora #4              ; Always byte aligned so we can assume or for +4
-    sta plotposition2   ; Multresult is used here to save zp usage - not necessary
+    sta plotposition2    ; Multresult is used here to save zp usage - not necessary
     lda plotposition+1
     sta plotposition2+1
 
 .dlmainlp
-    clc
-    lda plotposition+1
-    adc #2
-    sta plotposition+1
-    sta plotposition2+1
+    ldy plotposition+1
+    iny:iny
+    sty plotposition+1
+    sty plotposition2+1
 
     ldy #0
     lda colour
@@ -1146,17 +1248,15 @@ guard iocodestart+512
     bcs dlmainlp        ; More than 8 loop whole block
 
 .lastblock
-    ; Draw remaining line
-    clc
-    lda plotposition+1
-    adc #2
-    sta plotposition+1       ; Increment screen position
+    ; Draw remaining lines
 
-    lda linelength      ; Remainder
+    ldy linelength      ; Remainder
     beq dlfinished
-    eor #7
-    tay
-    lda branchtable,y
+
+    inc plotposition+1  ; Increment screen position
+    inc plotposition+1  ; Increment screen position
+
+    lda branchtabler,y
     sta bottombranch+1     ; Write last branch
 
     ldy #0              ; Start at top of block
@@ -1173,18 +1273,26 @@ guard iocodestart+512
     sta (plotposition),Y
 
 .dlfinished
-
     lda #4
     sta drawingflag
     lda &fee0
     sta tubestatus 
     rts
 
-; Table for branch calculation
+; Table for branch calculation - Reversed
+.branchtabler
+FOR i, 0, 7
+equb 3*(7-i)
+NEXT    
+
+; Table for branch calculation - Normal
 .branchtable
 FOR i, 0, 7
 equb 3*i
 NEXT    
+
+.revtable
+equb 8,7,6,5,4,3,2,1
 
 .setcrtcio
     ; sets crtc variable X to value A

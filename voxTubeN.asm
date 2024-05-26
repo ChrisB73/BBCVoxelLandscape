@@ -265,7 +265,7 @@ skip &44
 
 ;  Reset heigh buffer
     ldx #screenwidth
-    lda #screenheight-1          ; 200 in lowest line (25*8)
+    lda #screenheight          ; 200 in lowest line (25*8)
 .ybresetlp
     sta yb-1,x
     sta lb-1,X
@@ -326,7 +326,7 @@ skip &44
     lda temp+1
     clc
     adc #datapos    ; Location of landscape data
-    sta oy+1
+    sta datasource+1
 
     lda temp+1
     adc #maxpos     ; Colour data 
@@ -365,12 +365,8 @@ skip &44
     ;      B%=(INT(left_x%DIV256)MODsize%)+oy%
     lda left_x+1
     and #127
-    clc
-    adc oy
+    ora oy
     sta datasource
-    ldy oy+1
-    adc #0
-    sty datasource+1
 datasource=P%+1
     lda datasource
     ;      V%=?B%
@@ -591,9 +587,7 @@ coloursource=P%+1
     lda iscaled
     jsr oswrch              ; plotpos
 
-    ldy yb,X
-    dey
-    tya
+    lda yb,X
     jsr oswrch              ; Linelength
 
 .skipsky1
@@ -688,7 +682,7 @@ coloursource=P%+1
     jsr keycheck
     bne notj
     ldx horizon
-    inx:inx
+    inx:inx:inx
     bmi notj
     stx horizon
 .notj
@@ -696,7 +690,7 @@ coloursource=P%+1
     jsr keycheck
     bne notn
     ldx horizon
-    dex:dex
+    dex:dex:dex
     bmi notn
     stx horizon
 .notn
@@ -707,7 +701,7 @@ coloursource=P%+1
     bne notk
     lda height
     clc
-    adc #6
+    adc #8
     cmp #8
     bcc notk
     sta height
@@ -717,7 +711,7 @@ coloursource=P%+1
     bne notm
     lda height
     sec
-    sbc #6
+    sbc #8
     cmp #8
     bcc notm
     sta height
@@ -1088,12 +1082,18 @@ guard iocodestart+512
 ;    jsr drawliner
 ; Runs into drawline
 .drawline
+    ; Takes Multiplier as line length
+    ; Multiplier+1 as start location
+    ; colour as colour 
+    ; iscaled as start location
+
     lda plotposition
     and #7
     sta topposition                 ; save start offset
     lda plotposition
     and #%11111000
     sta plotposition                ; Strip bottom bits
+
 
     ; Draw first group of 8
     ; Work out if there are less bytes than a single group
@@ -1107,10 +1107,8 @@ guard iocodestart+512
     bcs dlmorethantop
     ; Not more than top
 
-    lda linelength
-    eor #7              ; Invert 
-    tay
-    lda branchtable,y
+    ldy linelength
+    lda branchtabler,y
     sta topbranch+1     ; Store as branch
     ldy topposition
 
@@ -1125,9 +1123,8 @@ guard iocodestart+512
     sta (plotposition),Y:iny
     sta (plotposition),Y:iny
     sta (plotposition),Y:iny
-    sta (plotposition),Y:iny
     sta (plotposition),Y
-    jmp dlfinished
+    jmp dlfinished                 ; Finish as it's only single byte
 
 .dlmorethantop
     ; Write a "complete" top byte
@@ -1150,14 +1147,15 @@ guard iocodestart+512
     sta (plotposition),Y:iny
     sta (plotposition),Y
 
-
-    lda topposition
-;    and #7
-    eor #&f8        ; 07 eor ff
+    ldy topposition
+    lda linelength  
     sec
-    adc linelength  ; Reverse Subtract
+    sbc revtable,y
     sta linelength      ; Reduce by number we just plotted.
-    beq dlfinished      ; If zero then done
+    bne dlcarryon
+    inc plotposition+1
+    inc plotposition+1
+    jmp dlfinished                 ; If zero then finished
 
 .dlcarryon
     cmp #8              ; Do we have whole block to finish?
@@ -1165,16 +1163,15 @@ guard iocodestart+512
 
     lda plotposition
     ora #4              ; Always byte aligned so we can assume or for +4
-    sta plotposition2   ; Multresult is used here to save zp usage - not necessary
+    sta plotposition2    ; Multresult is used here to save zp usage - not necessary
     lda plotposition+1
     sta plotposition2+1
 
 .dlmainlp
-    clc
-    lda plotposition+1
-    adc #2
-    sta plotposition+1
-    sta plotposition2+1
+    ldy plotposition+1
+    iny:iny
+    sty plotposition+1
+    sty plotposition2+1
 
     ldy #0
     lda colour
@@ -1196,18 +1193,15 @@ guard iocodestart+512
     bcs dlmainlp        ; More than 8 loop whole block
 
 .lastblock
-    ; Draw remaining line
-    clc
-    lda plotposition+1
-    adc #2
-    sta plotposition+1       ; Increment screen position
+    ; Draw remaining lines
 
-    lda linelength      ; Remainder
+    ldy linelength      ; Remainder
     beq dlfinished
-    eor #7
-    tay
-    lda branchtable,y
+    lda branchtabler,y
     sta bottombranch+1     ; Write last branch
+
+    inc plotposition+1  ; Increment screen position
+    inc plotposition+1  ; Increment screen position
 
     ldy #0              ; Start at top of block
     lda colour          ; Get colour to plot
@@ -1226,14 +1220,24 @@ guard iocodestart+512
     lda #4
     sta drawingflag
     lda &fee0
-    sta tubestatus 
+    sta tubestatus
+     
     rts
 
-; Table for branch calculation
+; Table for branch calculation - Right hand side
+.branchtabler
+FOR i, 0, 7
+equb 3*(7-i)
+NEXT    
+
+; Table for branch calculation - Left hand side
 .branchtable
 FOR i, 0, 7
 equb 3*i
 NEXT    
+
+.revtable
+equb 8,7,6,5,4,3,2,1
 
 .setcrtcio
     ; sets crtc variable X to value A
