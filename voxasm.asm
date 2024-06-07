@@ -237,7 +237,7 @@ equb 8,7,6,5,4,3,2,1
     lda temp+1
     clc
     adc #hi(maxpos)    ; Location of landscape data
-    sta datasource+1
+    sta oy+1
 
     ldy #0
 ; Shift scale down to allow 8x8 multiply
@@ -284,10 +284,8 @@ equb 8,7,6,5,4,3,2,1
     ;      B%=(INT(left_x%DIV256)MODsize%)+oy%
     lda left_x+1
     and #63
-    ora oy
-    sta datasource
-datasource=P%+1
-    lda datasource
+    tay
+    lda (oy), y
     ;      V%=?B%
     sta value
     stx temp
