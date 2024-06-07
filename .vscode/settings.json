@@ -1,0 +1,12 @@
+{
+    "beebvsc": {
+        "sourceFile": [
+            "voxasm.asm",
+            "voxasm_sw.asm",
+            "voxTubeH.asm",
+            "voxTubeL.asm",
+            "voxTubeN.asm",
+        ],
+        "targetName": "voxasm.ssd"
+    }
+}
