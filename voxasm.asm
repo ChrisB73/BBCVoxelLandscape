@@ -1290,16 +1290,16 @@ NEXT
 
 
 save "!Boot",codestart,P%,entrypoint
-putfile "maps\map64x128_11.bin","M.A",&3000
-putfile "maps\map64x128_9.bin","M.B",&3000
-putfile "maps\map64x128_16.bin","M.C",&3000
-putfile "maps\map64x128_15.bin","M.D",&3000
-putfile "maps\map64x128_22.bin","M.E",&3000
-putfile "maps\map64x128_21.bin","M.F",&3000
-putfile "maps\map64x128_1.bin","M.G",&3000
-putfile "maps\map64x128_2.bin","M.H",&3000
-putfile "maps\map64x128_5.bin","M.I",&3000
-putfile "maps\map64x128_6.bin","M.J",&3000
-putfile "maps\map64x128_7.bin","M.K",&3000
-putfile "maps\map64x128_10.bin","M.L",&3000
-putfile "maps\map64x128_25.bin","M.M",&3000
+putfile "maps/map64x128_11.bin","M.A",&3000
+putfile "maps/map64x128_9.bin","M.B",&3000
+putfile "maps/map64x128_16.bin","M.C",&3000
+putfile "maps/map64x128_15.bin","M.D",&3000
+putfile "maps/map64x128_22.bin","M.E",&3000
+putfile "maps/map64x128_21.bin","M.F",&3000
+putfile "maps/map64x128_1.bin","M.G",&3000
+putfile "maps/map64x128_2.bin","M.H",&3000
+putfile "maps/map64x128_5.bin","M.I",&3000
+putfile "maps/map64x128_6.bin","M.J",&3000
+putfile "maps/map64x128_7.bin","M.K",&3000
+putfile "maps/map64x128_10.bin","M.L",&3000
+putfile "maps/map64x128_25.bin","M.M",&3000
