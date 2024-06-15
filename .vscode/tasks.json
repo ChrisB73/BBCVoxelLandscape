@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "BeebVSC Build Target 'voxel.ssd'",
+            "label": "BeebVSC Build Target 'vox8.ssd'",
             "type": "shell",
             "problemMatcher": {
                 "owner": "6502",
@@ -18,12 +18,15 @@
                     "message": 4
                 }
             },
-            "command": "BeebAsm",
+            "command": "BeebAsm.exe",
+            "osx": {
+                "command": "beebasm"
+            },
             "args": [
                 "-i",
                 "voxasm.asm",
                 "-do",
-                "voxel.ssd",
+                "vox8.ssd",
                 "-opt",
                 "2",
                 "-title",
@@ -39,50 +42,19 @@
             "type": "shell",
             "command": "BeebEm.exe",
             "args": [
-                "voxel.ssd"
+                "vox8.ssd"
             ],
             "osx": {
                 "command": "open",
                 "args": [
                     "-a",
                     "b2 Debug",
-                    "voxel.ssd"
+                    "vox8.ssd"
                 ]
             },
             "group": {
                 "kind": "test",
                 "isDefault": true
-            }
-        },
-        {
-            "label": "Build binary file for testing",
-            "type": "shell",
-            "problemMatcher": {
-                "owner": "6502",
-                "fileLocation": [
-                    "relative",
-                    "${workspaceRoot}"
-                ],
-                "pattern": {
-                    "regexp": "^(.*):(\\d+):\\s+(warning|error):\\s+(.*)$",
-                    "file": 1,
-                    "line": 2,
-                    "severity": 3,
-                    "message": 4
-                }
-            },
-            "command": "BeebAsm",
-            "args": [
-                "-i",
-                "voxasm.asm",
-                "-dd",
-                "-labels",
-                "labels.txt",
-                "-v"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": false
             }
         }
     ]

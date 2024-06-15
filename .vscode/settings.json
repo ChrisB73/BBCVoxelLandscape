@@ -5,7 +5,7 @@
             "voxasm_sw.asm",
             "voxTubeH.asm",
             "voxTubeL.asm",
-            "voxTubeN.asm",
+            "voxTubeN.asm"
         ],
         "targetName": "voxasm.ssd"
     }
