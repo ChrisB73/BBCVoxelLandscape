@@ -27,7 +27,10 @@ screenheight=200
 scale=&0
 left_x=&2
 dx=&4
-oy=&6          ; 2 bytes - allow 4
+oy=&6          ; 2 bytes
+startz=&8 ; Start of z axis distance from camera
+adjheight=&9 ; Adjusted screen height for horizon (= 200 - horizon)
+
 ;datasource=&8  ; Overwritten by oy
 value=&a
 iscaled=&b         ; 2 bytes
@@ -146,6 +149,7 @@ equb 8,7,6,5,4,3,2,1
     lda #223:sta height
     lda #32:sta horizon
     lda #48:sta drawdistance            ;160 mark
+    jsr updatestartz
 
     lda #&67
     sta screenstart             ; Initialise screen location in memory
@@ -179,9 +183,7 @@ equb 8,7,6,5,4,3,2,1
     bpl resetlp
 
 
-    ldx #4 ; Starting location for scale. Setting this too high means
-           ; some of the very closest rows might not be drawn
-           ; Too low and unnecessary calculations.
+    ldx startz ; Starting distance from camera to draw
 
 ;Z loop
 .rowloop
@@ -237,7 +239,7 @@ equb 8,7,6,5,4,3,2,1
     lda temp+1
     clc
     adc #hi(maxpos)    ; Location of landscape data
-    sta datasource+1
+    sta oy+1
 
     ldy #0
 ; Shift scale down to allow 8x8 multiply
@@ -284,10 +286,8 @@ equb 8,7,6,5,4,3,2,1
     ;      B%=(INT(left_x%DIV256)MODsize%)+oy%
     lda left_x+1
     and #63
-    ora oy
-    sta datasource
-datasource=P%+1
-    lda datasource
+    tay
+    lda (oy), y
     ;      V%=?B%
     sta value
     stx temp
@@ -843,6 +843,7 @@ print "endframe",~P%
     inx:inx:inx
     bmi notj
     stx horizon
+    jsr updatestartz
 .notj
     lda #85+128             ;N
     jsr keycheck
@@ -851,6 +852,7 @@ print "endframe",~P%
     dex:dex:dex
     bmi notn
     stx horizon
+    jsr updatestartz
 .notn
 
 
@@ -863,6 +865,7 @@ print "endframe",~P%
     cmp #8
     bcc notk
     sta height
+    jsr updatestartz
 .notk
     lda #101+128             ;M
     jsr keycheck
@@ -873,6 +876,7 @@ print "endframe",~P%
     cmp #8
     bcc notm
     sta height
+    jsr updatestartz
 .notm
 
     lda #84+128             ;H
@@ -923,6 +927,62 @@ print "endframe",~P%
     beq keycheckend
     cmp &Ed
 .keycheckend
+    rts
+
+.updatestartz
+    lda #200
+    sec
+    sbc horizon
+    sta adjheight
+    ldx #4
+; Do pre-check if entire row is offscreen
+.checkoffscreen
+    lda scalelo,x
+    sta scale
+    lda scalehi,X
+    sta scale+1
+
+    lda height
+    sec
+    sbc #128            ; Because all map heights are < 128
+    bcc foundMin
+    sta multiplier      ; Multiplier = H - max(V)
+
+; 16bit * 8bit = 16bit multiply
+; By White Flame
+    lda #$00
+    tay
+    beq enterLoop
+.doAdd
+    clc
+    adc scale
+    sta temp
+    tya
+    adc scale+1
+    bcs skipWholeRow    ; Overflow => result > 200 i.e. offscreen regardless of horizon value
+    cmp adjheight
+    bcs skipWholeRow
+    jmp oktocontinue
+.skipWholeRow
+    jmp tryNextRow
+.oktocontinue
+    tay
+    lda temp
+.loop
+    asl scale
+    rol scale+1
+.enterLoop  ; accumulating multiply entry point (enter with .A=lo, .Y=hi)
+    lsr multiplier
+    bcs doAdd
+    bne loop
+
+    jmp foundMin ; Finished multiplication without showing offscreen
+.tryNextRow
+    inx
+    bpl checkoffscreen
+; Chance something will draw onscreen, so do full row calc from here
+.foundMin
+    stx startz
     rts
 
 .drawline
@@ -1290,16 +1350,16 @@ NEXT
 
 
 save "!Boot",codestart,P%,entrypoint
-putfile "maps\map64x128_11.bin","M.A",&3000
-putfile "maps\map64x128_9.bin","M.B",&3000
-putfile "maps\map64x128_16.bin","M.C",&3000
-putfile "maps\map64x128_15.bin","M.D",&3000
-putfile "maps\map64x128_22.bin","M.E",&3000
-putfile "maps\map64x128_21.bin","M.F",&3000
-putfile "maps\map64x128_1.bin","M.G",&3000
-putfile "maps\map64x128_2.bin","M.H",&3000
-putfile "maps\map64x128_5.bin","M.I",&3000
-putfile "maps\map64x128_6.bin","M.J",&3000
-putfile "maps\map64x128_7.bin","M.K",&3000
-putfile "maps\map64x128_10.bin","M.L",&3000
-putfile "maps\map64x128_25.bin","M.M",&3000
+putfile "maps/map64x128_11.bin","M.A",&3000
+putfile "maps/map64x128_9.bin","M.B",&3000
+putfile "maps/map64x128_16.bin","M.C",&3000
+putfile "maps/map64x128_15.bin","M.D",&3000
+putfile "maps/map64x128_22.bin","M.E",&3000
+putfile "maps/map64x128_21.bin","M.F",&3000
+putfile "maps/map64x128_1.bin","M.G",&3000
+putfile "maps/map64x128_2.bin","M.H",&3000
+putfile "maps/map64x128_5.bin","M.I",&3000
+putfile "maps/map64x128_6.bin","M.J",&3000
+putfile "maps/map64x128_7.bin","M.K",&3000
+putfile "maps/map64x128_10.bin","M.L",&3000
+putfile "maps/map64x128_25.bin","M.M",&3000
